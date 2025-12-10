@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { groupPurchases, groupPurchasePhotocards } from "@/lib/db/schema";
+import {
+	groupPurchases,
+	groupPurchasePhotocards,
+	orderItems,
+	orders,
+} from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
+import { createNotification } from "@/lib/redis";
 
 export async function GET(
 	request: NextRequest,
@@ -133,11 +139,14 @@ export async function DELETE(
 		const id = params instanceof Promise ? (await params).id : params.id;
 		const photocardId = id;
 
-		// Get the photocard and its group purchase
+		// Get the photocard and its group purchase with more details
 		const [photocard] = await db
 			.select({
 				id: groupPurchasePhotocards.id,
+				name: groupPurchasePhotocards.photocard,
+				idol: groupPurchasePhotocards.idol,
 				groupPurchaseId: groupPurchasePhotocards.groupPurchaseId,
+				groupPurchaseTitle: groupPurchases.title,
 				sellerId: groupPurchases.sellerId,
 				requesterId: groupPurchasePhotocards.requesterId,
 			})
@@ -167,12 +176,101 @@ export async function DELETE(
 			);
 		}
 
+		// Find all order items that reference this photocard
+		const affectedOrderItems = await db
+			.select({
+				orderItemId: orderItems.id,
+				orderId: orderItems.orderId,
+				quantity: orderItems.quantity,
+				unitPrice: orderItems.unitPrice,
+			})
+			.from(orderItems)
+			.where(eq(orderItems.productId, photocardId));
+
+		// Get unique order IDs
+		const affectedOrderIds = [
+			...new Set(affectedOrderItems.map((item) => item.orderId)),
+		];
+
+		// Get affected orders with user info
+		const affectedOrders =
+			affectedOrderIds.length > 0
+				? await db
+						.select({
+							id: orders.id,
+							userId: orders.userId,
+							status: orders.status,
+							totalAmount: orders.totalAmount,
+						})
+						.from(orders)
+						.where(
+							and(
+								inArray(orders.id, affectedOrderIds)
+								// Only cancel orders that are not already delivered or canceled
+								// We'll handle this in the loop below
+							)
+						)
+				: [];
+
+		// Cancel affected orders and notify users
+		const canceledOrderIds: string[] = [];
+		const notifiedUserIds: string[] = [];
+
+		for (const order of affectedOrders) {
+			// Skip already canceled or delivered orders
+			if (order.status === "canceled" || order.status === "delivered") {
+				continue;
+			}
+
+			// Cancel the order
+			await db
+				.update(orders)
+				.set({
+					status: "canceled",
+					updatedAt: new Date(),
+				})
+				.where(eq(orders.id, order.id));
+
+			canceledOrderIds.push(order.id);
+
+			// Create notification for the user (if not already notified)
+			if (!notifiedUserIds.includes(order.userId)) {
+				try {
+					await createNotification({
+						userId: order.userId,
+						type: "photocard_removed",
+						title: "Photocard removido do CEG",
+						message: `O photocard "${photocard.name}" (${
+							photocard.idol || "N/A"
+						}) foi removido do CEG "${
+							photocard.groupPurchaseTitle
+						}". Seu pedido foi cancelado automaticamente.`,
+						relatedOrderId: order.id,
+						relatedCegId: photocard.groupPurchaseId,
+					});
+					notifiedUserIds.push(order.userId);
+				} catch (notifError) {
+					// Log but don't fail the deletion if notification fails
+					console.error("Failed to create notification:", notifError);
+				}
+			}
+		}
+
+		// Delete the order items referencing this photocard
+		if (affectedOrderItems.length > 0) {
+			await db.delete(orderItems).where(eq(orderItems.productId, photocardId));
+		}
+
 		// Delete the photocard
 		await db
 			.delete(groupPurchasePhotocards)
 			.where(eq(groupPurchasePhotocards.id, photocardId));
 
-		return NextResponse.json({ message: "Photocard deleted successfully" });
+		return NextResponse.json({
+			message: "Photocard deleted successfully",
+			canceledOrders: canceledOrderIds.length,
+			notifiedUsers: notifiedUserIds.length,
+		});
 	} catch (error) {
 		console.error("Error deleting photocard:", error);
 		return NextResponse.json(

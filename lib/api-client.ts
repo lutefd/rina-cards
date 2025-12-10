@@ -427,14 +427,18 @@ export async function createOrder(data: {
 
 export async function updateOrderStatus(
 	id: string,
-	status: string
+	status: string,
+	options?: { restockItems?: boolean }
 ): Promise<Order> {
 	const res = await fetch(`/api/orders/${id}/status`, {
 		method: "PUT",
 		headers: {
 			"Content-Type": "application/json",
 		},
-		body: JSON.stringify({ status }),
+		body: JSON.stringify({
+			status,
+			restockItems: options?.restockItems,
+		}),
 	});
 
 	if (!res.ok) {

@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { orders, orderItems, products, groupPurchases, groupPurchasePhotocards } from "@/lib/db/schema";
+import {
+	orders,
+	orderItems,
+	products,
+	groupPurchases,
+	groupPurchasePhotocards,
+	user,
+} from "@/lib/db/schema";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { createNotification } from "@/lib/redis";
 
 export async function GET(request: NextRequest) {
 	try {
@@ -30,14 +38,31 @@ export async function GET(request: NextRequest) {
 			whereConditions.push(eq(orders.groupPurchaseId, groupPurchaseId));
 		}
 
-		// Get orders
+		// Get orders with group purchase info
 		const userOrders = await db
-			.select()
+			.select({
+				id: orders.id,
+				userId: orders.userId,
+				groupPurchaseId: orders.groupPurchaseId,
+				productId: orders.productId,
+				quantity: orders.quantity,
+				unitPrice: orders.unitPrice,
+				status: orders.status,
+				totalAmount: orders.totalAmount,
+				contactInfo: orders.contactInfo,
+				notes: orders.notes,
+				createdAt: orders.createdAt,
+				updatedAt: orders.updatedAt,
+				groupPurchaseTitle: groupPurchases.title,
+				groupPurchaseStatus: groupPurchases.status,
+				groupPurchaseType: groupPurchases.type,
+			})
 			.from(orders)
+			.leftJoin(groupPurchases, eq(orders.groupPurchaseId, groupPurchases.id))
 			.where(and(...whereConditions))
 			.orderBy(desc(orders.createdAt));
 
-		// Get order items for each order
+		// Get order items for each order with photocard details
 		const ordersWithItems = await Promise.all(
 			userOrders.map(async (order) => {
 				const items = await db
@@ -47,11 +72,16 @@ export async function GET(request: NextRequest) {
 						productId: orderItems.productId,
 						quantity: orderItems.quantity,
 						unitPrice: orderItems.unitPrice,
-						productName: products.name,
-						productDescription: products.description,
+						photocardName: groupPurchasePhotocards.photocard,
+						photocardIdol: groupPurchasePhotocards.idol,
+						photocardGroup: groupPurchasePhotocards.group,
+						photocardImageUrl: groupPurchasePhotocards.imageUrl,
 					})
 					.from(orderItems)
-					.leftJoin(products, eq(orderItems.productId, products.id))
+					.leftJoin(
+						groupPurchasePhotocards,
+						eq(orderItems.productId, groupPurchasePhotocards.id)
+					)
 					.where(eq(orderItems.orderId, order.id));
 
 				return {
@@ -141,7 +171,9 @@ export async function POST(request: NextRequest) {
 				)
 			);
 
-		const availablePhotocardIds = availablePhotocards.map((photocard) => photocard.id);
+		const availablePhotocardIds = availablePhotocards.map(
+			(photocard) => photocard.id
+		);
 		const invalidProductIds = productIds.filter(
 			(id: string) => !availablePhotocardIds.includes(id)
 		);
@@ -152,6 +184,32 @@ export async function POST(request: NextRequest) {
 					message: `Some photocards are not available: ${invalidProductIds.join(
 						", "
 					)}`,
+				},
+				{ status: 400 }
+			);
+		}
+
+		// Check stock availability for each item
+		const outOfStockItems: string[] = [];
+		for (const item of body.items) {
+			const photocard = availablePhotocards.find(
+				(p) => p.id === item.productId
+			);
+			if (
+				photocard &&
+				photocard.quantity !== null &&
+				photocard.quantity < item.quantity
+			) {
+				outOfStockItems.push(
+					`${photocard.photocard} (disponível: ${photocard.quantity}, solicitado: ${item.quantity})`
+				);
+			}
+		}
+
+		if (outOfStockItems.length > 0) {
+			return NextResponse.json(
+				{
+					message: `Estoque insuficiente para: ${outOfStockItems.join(", ")}`,
 				},
 				{ status: 400 }
 			);
@@ -210,6 +268,24 @@ export async function POST(request: NextRequest) {
 				})
 				.returning();
 
+			// Notify CEG owner about new order
+			try {
+				const buyerName =
+					session.user.name || session.user.email || "Um usuário";
+				await createNotification({
+					userId: groupPurchase.sellerId,
+					type: "new_order",
+					title: "Novo pedido recebido!",
+					message: `${buyerName} fez um pedido de R$ ${totalAmount.toFixed(
+						2
+					)} no seu CEG "${groupPurchase.title}".`,
+					relatedOrderId: newOrder.id,
+					relatedCegId: groupPurchase.id,
+				});
+			} catch (notifError) {
+				console.error("Failed to create notification for seller:", notifError);
+			}
+
 			return NextResponse.json(newOrder, { status: 201 });
 		}
 		// Handle items array
@@ -266,6 +342,38 @@ export async function POST(request: NextRequest) {
 				.insert(orderItems)
 				.values(orderItemsWithOrderId)
 				.returning();
+
+			// Decrement stock for each ordered item
+			for (const item of orderItemsData) {
+				await db
+					.update(groupPurchasePhotocards)
+					.set({
+						quantity: sql`${groupPurchasePhotocards.quantity} - ${item.quantity}`,
+						updatedAt: new Date(),
+					})
+					.where(eq(groupPurchasePhotocards.id, item.productId));
+			}
+
+			// Notify CEG owner about new order
+			try {
+				const buyerName =
+					session.user.name || session.user.email || "Um usuário";
+				const itemCount = body.items.length;
+				await createNotification({
+					userId: groupPurchase.sellerId,
+					type: "new_order",
+					title: "Novo pedido recebido!",
+					message: `${buyerName} fez um pedido com ${itemCount} item${
+						itemCount > 1 ? "s" : ""
+					} (R$ ${totalAmount.toFixed(2)}) no seu CEG "${
+						groupPurchase.title
+					}".`,
+					relatedOrderId: newOrder.id,
+					relatedCegId: groupPurchase.id,
+				});
+			} catch (notifError) {
+				console.error("Failed to create notification for seller:", notifError);
+			}
 
 			// Return the order with items
 			return NextResponse.json(

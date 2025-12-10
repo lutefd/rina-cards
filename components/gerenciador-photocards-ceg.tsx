@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Check, X, AlertCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Plus, Check, X, AlertCircle, Package } from "lucide-react";
 import { AdicionarPhotocardCEGDialog } from "@/components/adicionar-photocard-ceg-dialog";
 import {
 	Table,
@@ -30,6 +32,14 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Photocard {
 	id: string;
@@ -40,6 +50,7 @@ interface Photocard {
 	collection: string | null;
 	imageUrl: string | null;
 	price: number | null;
+	quantity?: number | null;
 	status: string;
 	requesterId: string | null;
 	requestNotes: string | null;
@@ -61,6 +72,14 @@ export function GerenciadorPhotocardsCEG({
 	const [currentPhotocards, setCurrentPhotocards] = useState(photocards);
 	const [showAddDialog, setShowAddDialog] = useState(false);
 	const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+	// Edit modal state
+	const [editingPhotocard, setEditingPhotocard] = useState<Photocard | null>(
+		null
+	);
+	const [editPrice, setEditPrice] = useState<string>("");
+	const [editQuantity, setEditQuantity] = useState<string>("");
+	const [isSaving, setIsSaving] = useState(false);
 
 	const disponiveisAprovados = currentPhotocards.filter(
 		(p) => p.status === "available" || p.status === "approved"
@@ -131,6 +150,55 @@ export function GerenciadorPhotocardsCEG({
 		setCurrentPhotocards([...currentPhotocards, newPhotocard]);
 	};
 
+	const openEditModal = (photocard: Photocard) => {
+		setEditingPhotocard(photocard);
+		setEditPrice(photocard.price?.toString() || "");
+		setEditQuantity(photocard.quantity?.toString() || "0");
+	};
+
+	const handleSaveEdit = async () => {
+		if (!editingPhotocard) return;
+
+		setIsSaving(true);
+		try {
+			const newPrice = parseFloat(editPrice);
+			const newQuantity = parseInt(editQuantity);
+
+			if (isNaN(newPrice) || newPrice < 0) {
+				toast.error("Preço inválido");
+				return;
+			}
+
+			if (isNaN(newQuantity) || newQuantity < 0) {
+				toast.error("Quantidade inválida");
+				return;
+			}
+
+			// Call the API to update the photocard
+			await updateGroupPurchasePhotocard(editingPhotocard.id, {
+				price: newPrice,
+				quantity: newQuantity,
+			});
+
+			// Update the local state
+			setCurrentPhotocards(
+				currentPhotocards.map((p) =>
+					p.id === editingPhotocard.id
+						? { ...p, price: newPrice, quantity: newQuantity }
+						: p
+				)
+			);
+
+			toast.success("Photocard atualizado com sucesso");
+			setEditingPhotocard(null);
+		} catch (error) {
+			console.error("Error updating photocard:", error);
+			toast.error("Erro ao atualizar photocard");
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
 	return (
 		<div className="space-y-6 mb-6">
 			{/* Photocards Disponíveis */}
@@ -158,7 +226,8 @@ export function GerenciadorPhotocardsCEG({
 							{disponiveisAprovados.map((photocard) => (
 								<div
 									key={photocard.id}
-									className="border rounded-lg p-3 relative group"
+									className="border rounded-lg p-3 relative group cursor-pointer hover:border-pink-300 hover:shadow-md transition-all"
+									onClick={() => openEditModal(photocard)}
 								>
 									<div className="aspect-3/4 bg-gray-100 rounded-lg mb-2 relative overflow-hidden">
 										<img
@@ -173,10 +242,18 @@ export function GerenciadorPhotocardsCEG({
 											size="sm"
 											variant="destructive"
 											className="absolute top-2 right-2 h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
-											onClick={() => setItemToDelete(photocard.id)}
+											onClick={(e) => {
+												e.stopPropagation();
+												setItemToDelete(photocard.id);
+											}}
 										>
 											<X className="w-4 h-4" />
 										</Button>
+										{/* Stock badge */}
+										<div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+											<Package className="w-3 h-3" />
+											{photocard.quantity ?? 0}
+										</div>
 									</div>
 									<h4 className="font-medium text-sm line-clamp-1">
 										{photocard.photocard}
@@ -326,6 +403,93 @@ export function GerenciadorPhotocardsCEG({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+
+			{/* Edit Photocard Dialog */}
+			<Dialog
+				open={!!editingPhotocard}
+				onOpenChange={(open) => !open && setEditingPhotocard(null)}
+			>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Editar Photocard</DialogTitle>
+						<DialogDescription>
+							Altere o preço e estoque deste photocard
+						</DialogDescription>
+					</DialogHeader>
+
+					{editingPhotocard && (
+						<div className="space-y-4">
+							{/* Photocard info */}
+							<div className="flex gap-4 items-start">
+								<div className="w-20 h-28 bg-gray-100 rounded-lg overflow-hidden shrink-0">
+									<img
+										src={
+											editingPhotocard.imageUrl ||
+											`/placeholder.svg?height=112&width=80&query=${editingPhotocard.idol}`
+										}
+										alt={editingPhotocard.photocard}
+										className="w-full h-full object-cover"
+									/>
+								</div>
+								<div>
+									<h4 className="font-medium">{editingPhotocard.photocard}</h4>
+									<p className="text-sm text-muted-foreground">
+										{editingPhotocard.idol || ""}
+										{editingPhotocard.group && ` • ${editingPhotocard.group}`}
+									</p>
+								</div>
+							</div>
+
+							{/* Price input */}
+							<div className="space-y-2">
+								<Label htmlFor="edit-price">Preço (R$)</Label>
+								<Input
+									id="edit-price"
+									type="number"
+									step="0.01"
+									min="0"
+									value={editPrice}
+									onChange={(e) => setEditPrice(e.target.value)}
+									placeholder="0.00"
+								/>
+							</div>
+
+							{/* Quantity input */}
+							<div className="space-y-2">
+								<Label htmlFor="edit-quantity">Estoque</Label>
+								<Input
+									id="edit-quantity"
+									type="number"
+									min="0"
+									value={editQuantity}
+									onChange={(e) => setEditQuantity(e.target.value)}
+									placeholder="0"
+								/>
+								<p className="text-xs text-muted-foreground">
+									Quantidade disponível para venda
+								</p>
+							</div>
+						</div>
+					)}
+
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setEditingPhotocard(null)}
+							disabled={isSaving}
+						>
+							Cancelar
+						</Button>
+						<Button
+							onClick={handleSaveEdit}
+							disabled={isSaving}
+							className="bg-pink-600 hover:bg-pink-700"
+						>
+							{isSaving ? "Salvando..." : "Salvar"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

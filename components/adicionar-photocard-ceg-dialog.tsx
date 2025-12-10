@@ -46,6 +46,17 @@ export function AdicionarPhotocardCEGDialog({
 	const [colecao, setColecao] = useState("");
 	const [imagemUrl, setImagemUrl] = useState("");
 	const [preco, setPreco] = useState("");
+	const [estoque, setEstoque] = useState("1");
+	const [estoqueExistente, setEstoqueExistente] = useState("1");
+	const [precoExistente, setPrecoExistente] = useState("");
+
+	// When a photocard is selected, pre-fill the price
+	useEffect(() => {
+		if (selectedPhotocard) {
+			setPrecoExistente(selectedPhotocard.preco?.toString() || "0");
+			setEstoqueExistente("1");
+		}
+	}, [selectedPhotocard]);
 
 	useEffect(() => {
 		if (open && searchQuery) {
@@ -78,15 +89,20 @@ export function AdicionarPhotocardCEGDialog({
 		setIsLoading(true);
 
 		try {
-			// Create a new photocard in the group purchase
+			// Create a new photocard in the group purchase with custom price and stock
 			const newPhotocard = await createGroupPurchasePhotocard({
 				groupPurchaseId: cegId,
 				photocard: selectedPhotocard.titulo,
 				idol: selectedPhotocard.idol,
 				group: selectedPhotocard.grupo,
-				price: selectedPhotocard.preco || 0,
+				era: selectedPhotocard.era,
+				collection: selectedPhotocard.colecao,
+				price: precoExistente
+					? Number.parseFloat(precoExistente)
+					: selectedPhotocard.preco || 0,
 				imageUrl: selectedPhotocard.imagem_url,
-				quantity: 1,
+				quantity: estoqueExistente ? Number.parseInt(estoqueExistente) : 1,
+				photocardsId: selectedPhotocard.id,
 			});
 
 			// Show success message
@@ -99,6 +115,8 @@ export function AdicionarPhotocardCEGDialog({
 			onOpenChange(false);
 			setSelectedPhotocard(null);
 			setSearchQuery("");
+			setPrecoExistente("");
+			setEstoqueExistente("1");
 		} catch (error) {
 			console.error("Error adding photocard:", error);
 			toast.error("Erro ao adicionar photocard");
@@ -123,7 +141,7 @@ export function AdicionarPhotocardCEGDialog({
 				collection: colecao || undefined,
 				price: preco ? Number.parseFloat(preco) : 0,
 				imageUrl: imagemUrl || undefined,
-				quantity: 1,
+				quantity: estoque ? Number.parseInt(estoque) : 1,
 			});
 
 			// Show success message
@@ -143,6 +161,7 @@ export function AdicionarPhotocardCEGDialog({
 			setColecao("");
 			setImagemUrl("");
 			setPreco("");
+			setEstoque("1");
 		} catch (error) {
 			console.error("Error creating photocard:", error);
 			toast.error("Erro ao criar photocard");
@@ -229,6 +248,71 @@ export function AdicionarPhotocardCEGDialog({
 							</p>
 						)}
 
+						{selectedPhotocard && (
+							<div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
+								<div className="flex items-center gap-3">
+									<div className="w-16 h-20 rounded overflow-hidden bg-gray-200 shrink-0">
+										<img
+											src={
+												selectedPhotocard.imagem_url ||
+												`/placeholder.svg?height=80&width=64`
+											}
+											alt={selectedPhotocard.titulo}
+											className="w-full h-full object-cover"
+										/>
+									</div>
+									<div className="flex-1 min-w-0">
+										<p className="font-medium text-sm line-clamp-1">
+											{selectedPhotocard.titulo}
+										</p>
+										<p className="text-xs text-muted-foreground">
+											{selectedPhotocard.idol}
+										</p>
+										{selectedPhotocard.grupo && (
+											<p className="text-xs text-muted-foreground">
+												{selectedPhotocard.grupo}
+											</p>
+										)}
+										<p className="text-xs text-muted-foreground mt-1">
+											Preço de referência: R${" "}
+											{selectedPhotocard.preco?.toFixed(2) || "0.00"}
+										</p>
+									</div>
+								</div>
+
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<Label htmlFor="precoExistente">
+											Preço neste CEG (R$) *
+										</Label>
+										<Input
+											id="precoExistente"
+											type="number"
+											step="0.01"
+											min="0"
+											value={precoExistente}
+											onChange={(e) => setPrecoExistente(e.target.value)}
+											placeholder="0.00"
+										/>
+									</div>
+									<div>
+										<Label htmlFor="estoqueExistente">Estoque *</Label>
+										<Input
+											id="estoqueExistente"
+											type="number"
+											min="1"
+											value={estoqueExistente}
+											onChange={(e) => setEstoqueExistente(e.target.value)}
+											placeholder="1"
+										/>
+									</div>
+								</div>
+								<p className="text-xs text-muted-foreground">
+									Defina o preço e quantidade disponível para venda neste CEG
+								</p>
+							</div>
+						)}
+
 						<Button
 							onClick={handleAdicionarExistente}
 							disabled={!selectedPhotocard || isLoading}
@@ -305,16 +389,30 @@ export function AdicionarPhotocardCEGDialog({
 							/>
 						</div>
 
-						<div>
-							<Label htmlFor="preco">Preço (R$)</Label>
-							<Input
-								id="preco"
-								type="number"
-								step="0.01"
-								value={preco}
-								onChange={(e) => setPreco(e.target.value)}
-								placeholder="0.00"
-							/>
+						<div className="grid grid-cols-2 gap-4">
+							<div>
+								<Label htmlFor="preco">Preço (R$)</Label>
+								<Input
+									id="preco"
+									type="number"
+									step="0.01"
+									value={preco}
+									onChange={(e) => setPreco(e.target.value)}
+									placeholder="0.00"
+								/>
+							</div>
+
+							<div>
+								<Label htmlFor="estoque">Estoque *</Label>
+								<Input
+									id="estoque"
+									type="number"
+									min="1"
+									value={estoque}
+									onChange={(e) => setEstoque(e.target.value)}
+									placeholder="1"
+								/>
+							</div>
 						</div>
 
 						<Button

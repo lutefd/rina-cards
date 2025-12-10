@@ -163,7 +163,7 @@ export const orders = pgTable("orders", {
 	groupPurchaseId: uuid("group_purchase_id")
 		.notNull()
 		.references(() => groupPurchases.id),
-	productId: uuid("product_id").references(() => products.id),
+	productId: uuid("product_id").references(() => groupPurchasePhotocards.id),
 	quantity: integer("quantity").default(1).notNull(),
 	unitPrice: doublePrecision("unit_price").notNull(),
 	status: text("status").default("pending").notNull(), // 'pending', 'confirmed', 'paid', 'shipped', 'delivered', 'canceled'
@@ -184,7 +184,7 @@ export const orderItems = pgTable("order_items", {
 		.references(() => orders.id, { onDelete: "cascade" }),
 	productId: uuid("product_id")
 		.notNull()
-		.references(() => products.id),
+		.references(() => groupPurchasePhotocards.id),
 	quantity: integer("quantity").notNull(),
 	unitPrice: doublePrecision("unit_price").notNull(),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -327,8 +327,8 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 		fields: [orderItems.orderId],
 		references: [orders.id],
 	}),
-	product: one(products, {
+	photocard: one(groupPurchasePhotocards, {
 		fields: [orderItems.productId],
-		references: [products.id],
+		references: [groupPurchasePhotocards.id],
 	}),
 }));

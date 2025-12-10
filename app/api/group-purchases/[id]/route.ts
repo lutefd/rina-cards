@@ -58,6 +58,7 @@ export async function GET(
 				price: groupPurchasePhotocards.price,
 				imageUrl: groupPurchasePhotocards.imageUrl,
 				available: groupPurchasePhotocards.available,
+				quantity: groupPurchasePhotocards.quantity,
 				status: groupPurchasePhotocards.status,
 			})
 			.from(groupPurchasePhotocards)
@@ -80,6 +81,7 @@ export async function GET(
 			preco: pc.price,
 			imagem_url: pc.imageUrl,
 			disponivel: pc.available,
+			estoque: pc.quantity,
 			status: pc.status,
 		}));
 
