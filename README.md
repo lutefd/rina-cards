@@ -1,24 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RinaCards - K-pop Photocard Marketplace
+
+This is a [Next.js](https://nextjs.org) project for a K-pop photocard marketplace with group purchase functionality.
+
+## Tech Stack
+
+- **Frontend**: Next.js 16 with App Router
+- **Database**: PostgreSQL in Docker
+- **ORM**: Drizzle ORM
+- **Authentication**: Better Auth with Google OAuth and Email/Password
+- **UI**: Tailwind CSS with shadcn/ui components
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+ and pnpm
+- Docker and Docker Compose
+
+### Setup
+
+1. Clone the repository
+2. Copy `.env.example` to `.env.local` and update the values
+3. Run the setup script:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm setup
+```
+
+This will:
+- Start PostgreSQL in Docker
+- Generate the database schema
+- Run migrations
+
+4. Start the development server:
+
+```bash
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Google OAuth Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To enable Google OAuth authentication:
+
+1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
+2. Configure the OAuth consent screen
+3. Create OAuth 2.0 credentials
+4. Add the client ID and secret to your `.env.local` file:
+
+```
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
 
 ## Learn More
 

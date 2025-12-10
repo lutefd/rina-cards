@@ -5,27 +5,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/client"
+import { updateOrderStatus } from "@/lib/api-client"
 import { Search, Mail, Phone } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { toast } from "sonner"
 
 interface Pedido {
   id: string
-  quantidade: number
-  preco_unitario: number
-  preco_total: number
+  quantity: number
+  unitPrice: number
+  totalAmount: number
   status: string
-  informacoes_contato: any
-  notas: string | null
-  comprador: {
-    nome_completo: string | null
-    email: string
-    telefone: string | null
+  contactInfo: any
+  notes: string | null
+  user: {
+    name: string | null
+    email: string | null
+    phone?: string | null
   }
-  photocard: {
-    titulo: string
-    idol: string
-    grupo: string
+  product?: {
+    name: string
+    idol?: string | null
+    group?: string | null
   }
 }
 
@@ -42,15 +43,15 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
 
   const getStatusVariant = (status: string) => {
     switch (status) {
-      case "confirmado":
+      case "confirmed":
         return "default"
-      case "pago":
+      case "paid":
         return "default"
-      case "enviado":
+      case "shipped":
         return "secondary"
-      case "entregue":
+      case "delivered":
         return "outline"
-      case "cancelado":
+      case "canceled":
         return "destructive"
       default:
         return "outline"
@@ -59,17 +60,17 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case "pendente":
+      case "pending":
         return "Pendente"
-      case "confirmado":
+      case "confirmed":
         return "Confirmado"
-      case "pago":
+      case "paid":
         return "Pago"
-      case "enviado":
+      case "shipped":
         return "Enviado"
-      case "entregue":
+      case "delivered":
         return "Entregue"
-      case "cancelado":
+      case "canceled":
         return "Cancelado"
       default:
         return status
@@ -77,26 +78,30 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
   }
 
   const updateStatus = async (pedidoId: string, novoStatus: string) => {
-    const supabase = createClient()
-    const { error } = await supabase.from("ceg_pedidos").update({ status: novoStatus }).eq("id", pedidoId)
-
-    if (error) {
-      console.error("[v0] Error updating status:", error)
-      return
+    try {
+      // Call the API to update the order status
+      await updateOrderStatus(pedidoId, novoStatus)
+      
+      // Update the local state
+      setPedidos(pedidos.map((p) => (p.id === pedidoId ? { ...p, status: novoStatus } : p)))
+      
+      // Show success message
+      toast.success("Status atualizado com sucesso")
+    } catch (error) {
+      console.error("Error updating order status:", error)
+      toast.error("Erro ao atualizar status")
     }
-
-    setPedidos(pedidos.map((p) => (p.id === pedidoId ? { ...p, status: novoStatus } : p)))
   }
 
   const filteredPedidos = pedidos.filter(
     (p) =>
-      p.comprador.nome_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.comprador.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.photocard.titulo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.photocard.idol.toLowerCase().includes(searchTerm.toLowerCase()),
+      p.user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.product?.idol?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const totalReceber = pedidos.filter((p) => p.status !== "cancelado").reduce((acc, p) => acc + p.preco_total, 0)
+  const totalReceber = pedidos.filter((p) => p.status !== "canceled").reduce((acc, p) => acc + p.totalAmount, 0)
 
   return (
     <div className="space-y-6">
@@ -108,11 +113,11 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
         </div>
         <div className="bg-white rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Pendentes</p>
-          <p className="text-2xl font-bold">{pedidos.filter((p) => p.status === "pendente").length}</p>
+          <p className="text-2xl font-bold">{pedidos.filter((p) => p.status === "pending").length}</p>
         </div>
         <div className="bg-white rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Entregues</p>
-          <p className="text-2xl font-bold">{pedidos.filter((p) => p.status === "entregue").length}</p>
+          <p className="text-2xl font-bold">{pedidos.filter((p) => p.status === "delivered").length}</p>
         </div>
         <div className="bg-white rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total a Receber</p>
@@ -151,44 +156,44 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
             {filteredPedidos.map((pedido) => (
               <TableRow key={pedido.id}>
                 <TableCell className="font-medium">
-                  {pedido.comprador.nome_completo || pedido.comprador.email}
+                  {pedido.user.name || pedido.user.email}
                 </TableCell>
                 <TableCell>
                   <div>
-                    <p className="font-medium">{pedido.photocard.titulo}</p>
+                    <p className="font-medium">{pedido.product?.name || 'Photocard'}</p>
                     <p className="text-sm text-muted-foreground">
-                      {pedido.photocard.idol} - {pedido.photocard.grupo}
+                      {pedido.product?.idol || ''} {pedido.product?.group ? `- ${pedido.product.group}` : ''}
                     </p>
                   </div>
                 </TableCell>
-                <TableCell>{pedido.quantidade}</TableCell>
-                <TableCell className="font-medium">R$ {pedido.preco_total.toFixed(2)}</TableCell>
+                <TableCell>{pedido.quantity}</TableCell>
+                <TableCell className="font-medium">R$ {pedido.totalAmount.toFixed(2)}</TableCell>
                 <TableCell>
                   <Select value={pedido.status} onValueChange={(value) => updateStatus(pedido.id, value)}>
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pendente">Pendente</SelectItem>
-                      <SelectItem value="confirmado">Confirmado</SelectItem>
-                      <SelectItem value="pago">Pago</SelectItem>
-                      <SelectItem value="enviado">Enviado</SelectItem>
-                      <SelectItem value="entregue">Entregue</SelectItem>
-                      <SelectItem value="cancelado">Cancelado</SelectItem>
+                      <SelectItem value="pending">Pendente</SelectItem>
+                      <SelectItem value="confirmed">Confirmado</SelectItem>
+                      <SelectItem value="paid">Pago</SelectItem>
+                      <SelectItem value="shipped">Enviado</SelectItem>
+                      <SelectItem value="delivered">Entregue</SelectItem>
+                      <SelectItem value="canceled">Cancelado</SelectItem>
                     </SelectContent>
                   </Select>
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
-                    {pedido.comprador.email && (
-                      <a href={`mailto:${pedido.comprador.email}`} title={pedido.comprador.email}>
+                    {pedido.user.email && (
+                      <a href={`mailto:${pedido.user.email}`} title={pedido.user.email}>
                         <Button size="icon" variant="ghost">
                           <Mail className="w-4 h-4" />
                         </Button>
                       </a>
                     )}
-                    {pedido.comprador.telefone && (
-                      <a href={`tel:${pedido.comprador.telefone}`} title={pedido.comprador.telefone}>
+                    {pedido.user.phone && (
+                      <a href={`tel:${pedido.user.phone}`} title={pedido.user.phone}>
                         <Button size="icon" variant="ghost">
                           <Phone className="w-4 h-4" />
                         </Button>
@@ -232,49 +237,49 @@ export function GerenciadorPedidos({ cegId, pedidos: initialPedidos }: Gerenciad
             <div className="space-y-4">
               <div>
                 <p className="text-sm font-semibold">Comprador</p>
-                <p>{selectedPedido.comprador.nome_completo}</p>
-                <p className="text-sm text-muted-foreground">{selectedPedido.comprador.email}</p>
-                {selectedPedido.comprador.telefone && (
-                  <p className="text-sm text-muted-foreground">{selectedPedido.comprador.telefone}</p>
+                <p>{selectedPedido.user.name}</p>
+                <p className="text-sm text-muted-foreground">{selectedPedido.user.email}</p>
+                {selectedPedido.user.phone && (
+                  <p className="text-sm text-muted-foreground">{selectedPedido.user.phone}</p>
                 )}
               </div>
 
               <div>
                 <p className="text-sm font-semibold">Photocard</p>
-                <p>{selectedPedido.photocard.titulo}</p>
+                <p>{selectedPedido.product?.name || 'Photocard'}</p>
                 <p className="text-sm text-muted-foreground">
-                  {selectedPedido.photocard.idol} - {selectedPedido.photocard.grupo}
+                  {selectedPedido.product?.idol || ''} {selectedPedido.product?.group ? `- ${selectedPedido.product.group}` : ''}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm font-semibold">Quantidade</p>
-                  <p>{selectedPedido.quantidade}</p>
+                  <p>{selectedPedido.quantity}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold">Preço Unitário</p>
-                  <p>R$ {selectedPedido.preco_unitario.toFixed(2)}</p>
+                  <p>R$ {selectedPedido.unitPrice.toFixed(2)}</p>
                 </div>
               </div>
 
               <div>
                 <p className="text-sm font-semibold">Preço Total</p>
-                <p className="text-lg font-bold text-pink-600">R$ {selectedPedido.preco_total.toFixed(2)}</p>
+                <p className="text-lg font-bold text-pink-600">R$ {selectedPedido.totalAmount.toFixed(2)}</p>
               </div>
 
-              {selectedPedido.notas && (
+              {selectedPedido.notes && (
                 <div>
                   <p className="text-sm font-semibold">Notas</p>
-                  <p className="text-sm">{selectedPedido.notas}</p>
+                  <p className="text-sm">{selectedPedido.notes}</p>
                 </div>
               )}
 
-              {selectedPedido.informacoes_contato && (
+              {selectedPedido.contactInfo && (
                 <div>
                   <p className="text-sm font-semibold">Informações Adicionais de Contato</p>
                   <pre className="text-sm bg-gray-50 p-2 rounded">
-                    {JSON.stringify(selectedPedido.informacoes_contato, null, 2)}
+                    {JSON.stringify(selectedPedido.contactInfo, null, 2)}
                   </pre>
                 </div>
               )}

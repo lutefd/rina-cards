@@ -4,13 +4,18 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
+
+// Translation helper
+const typeToEnglish: Record<string, string> = {
+  "nacional": "national",
+  "internacional": "international"
+}
 
 interface NovoCEGFormProps {
   userId: string
@@ -34,31 +39,37 @@ export function NovoCEGForm({ userId }: NovoCEGFormProps) {
     setIsLoading(true)
     setError(null)
 
-    const supabase = createClient()
-    const { data, error: insertError } = await supabase
-      .from("cegs")
-      .insert({
-        vendedor_id: userId,
-        titulo,
-        descricao: descricao || null,
-        tipo,
-        marketplace_origem: marketplaceOrigem || null,
-        data_fechamento: dataFechamento || null,
-        taxa_adicional: taxaAdicional ? Number.parseFloat(taxaAdicional) : 0,
-        informacoes_envio: informacoesEnvio || null,
-        status: "aberto",
+    try {
+      const response = await fetch('/api/group-purchases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sellerId: userId,
+          title: titulo,
+          description: descricao || null,
+          type: typeToEnglish[tipo] || tipo,
+          marketplaceSource: marketplaceOrigem || null,
+          closingDate: dataFechamento || null,
+          additionalFee: taxaAdicional ? Number.parseFloat(taxaAdicional) : 0,
+          shippingInfo: informacoesEnvio || null,
+          status: "open",
+        }),
       })
-      .select()
-      .single()
 
-    if (insertError) {
-      console.error("[v0] Error creating CEG:", insertError)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Failed to create group purchase')
+      }
+
+      const data = await response.json()
+      router.push(`/cegs/${data.id}/gerenciar`)
+    } catch (error) {
+      console.error("[v0] Error creating group purchase:", error)
       setError("Erro ao criar CEG. Tente novamente.")
       setIsLoading(false)
-      return
     }
-
-    router.push(`/cegs/${data.id}/gerenciar`)
   }
 
   return (

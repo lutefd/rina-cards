@@ -1,14 +1,41 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search } from "lucide-react"
+import type { Photocard } from "@/lib/api-client"
 
-export function MarketplaceFilters() {
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100])
+interface MarketplaceFiltersProps {
+  photocards: Photocard[];
+}
+
+export function MarketplaceFilters({ photocards }: MarketplaceFiltersProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "");
+  
+  // Extract unique values from photocards
+  const uniqueGroups = Array.from(new Set(photocards.map(pc => pc.group || pc.grupo).filter(Boolean)));
+  const uniqueIdols = Array.from(new Set(photocards.map(pc => pc.idol).filter(Boolean)));
+  
+  const updateFilters = (key: string, value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    router.push(`?${params.toString()}`);
+  };
+  
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    updateFilters("search", value);
+  };
 
   return (
     <div className="bg-white rounded-lg p-6 space-y-6 sticky top-20">
@@ -19,22 +46,54 @@ export function MarketplaceFilters() {
         </Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input id="search" placeholder="Nome do idol, grupo..." className="pl-9" />
+          <Input 
+            id="search" 
+            placeholder="Nome do idol, grupo..." 
+            className="pl-9"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Filtro por Idol */}
+      {/* Filtro por Grupo */}
       <div>
-        <Label className="text-sm font-semibold mb-3 block">Filtrar por Idol</Label>
-        <div className="space-y-2">
-          {["BTS", "BLACKPINK", "TWICE", "EXO", "NCT"].map((group) => (
+        <Label className="text-sm font-semibold mb-3 block">Filtrar por Grupo</Label>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {uniqueGroups.slice(0, 10).map((group) => (
             <div key={group} className="flex items-center space-x-2">
-              <Checkbox id={group} />
+              <Checkbox 
+                id={`group-${group}`}
+                checked={searchParams.get("group") === group}
+                onCheckedChange={(checked) => updateFilters("group", checked ? (group as string) : "")}
+              />
               <label
-                htmlFor={group}
+                htmlFor={`group-${group}`}
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
               >
                 {group}
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Filtro por Idol */}
+      <div>
+        <Label className="text-sm font-semibold mb-3 block">Filtrar por Idol</Label>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {uniqueIdols.slice(0, 10).map((idol) => (
+            <div key={idol} className="flex items-center space-x-2">
+              <Checkbox 
+                id={`idol-${idol}`}
+                checked={searchParams.get("idol") === idol}
+                onCheckedChange={(checked) => updateFilters("idol", checked ? idol : "")}
+              />
+              <label
+                htmlFor={`idol-${idol}`}
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                {idol}
               </label>
             </div>
           ))}
@@ -120,7 +179,10 @@ export function MarketplaceFilters() {
         <Label htmlFor="sort" className="text-sm font-semibold mb-2 block">
           Ordenar por
         </Label>
-        <Select defaultValue="recent">
+        <Select 
+          defaultValue={searchParams.get("sort") || "recent"}
+          onValueChange={(value) => updateFilters("sort", value)}
+        >
           <SelectTrigger id="sort">
             <SelectValue />
           </SelectTrigger>
@@ -128,7 +190,6 @@ export function MarketplaceFilters() {
             <SelectItem value="recent">Mais Recentes</SelectItem>
             <SelectItem value="price-asc">Menor Preço</SelectItem>
             <SelectItem value="price-desc">Maior Preço</SelectItem>
-            <SelectItem value="popular">Mais Popular</SelectItem>
           </SelectContent>
         </Select>
       </div>

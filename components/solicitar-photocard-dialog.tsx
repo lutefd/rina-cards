@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
 import {
   Dialog,
   DialogContent,
@@ -18,6 +17,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { requestPhotocard } from "@/lib/api-client"
+import { toast } from "sonner"
 
 interface SolicitarPhotocardDialogProps {
   cegId: string
@@ -41,29 +42,22 @@ export function SolicitarPhotocardDialog({ cegId }: SolicitarPhotocardDialogProp
     e.preventDefault()
     setIsLoading(true)
 
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) return
-
-    const { error } = await supabase.from("ceg_photocards").insert({
-      ceg_id: cegId,
-      titulo,
-      idol,
-      grupo: grupo || null,
-      era: era || null,
-      colecao: colecao || null,
-      imagem_url: imagemUrl || null,
-      preco: preco ? Number.parseFloat(preco) : null,
-      status: "solicitado",
-      solicitado_por: user.id,
-      notas_solicitacao: notas || null,
-    })
-
-    if (!error) {
+    try {
+      // Request photocard using API client
+      await requestPhotocard({
+        groupPurchaseId: cegId,
+        photocard: titulo,
+        idol,
+        group: grupo,
+        era,
+        collection: colecao,
+        imageUrl: imagemUrl,
+        requestNotes: notas
+      })
+      
+      toast.success("Solicitação enviada com sucesso!")
       setOpen(false)
+      
       // Limpar campos
       setTitulo("")
       setIdol("")
@@ -74,8 +68,12 @@ export function SolicitarPhotocardDialog({ cegId }: SolicitarPhotocardDialogProp
       setPreco("")
       setNotas("")
       router.refresh()
+    } catch (error) {
+      console.error("Erro ao solicitar photocard:", error)
+      toast.error("Erro ao enviar solicitação. Tente novamente.")
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (

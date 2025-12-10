@@ -1,10 +1,42 @@
+"use client"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import { useEffect } from "react"
+import { authClient } from "@/lib/auth-client"
 
 export default function CadastroSucessoPage() {
+  // Check if there's a stored user type and update it when the user logs in
+  useEffect(() => {
+    const updateUserType = async () => {
+      const userType = localStorage.getItem('userType')
+      if (userType) {
+        try {
+          // Check if user is logged in
+          const { data } = await authClient.getSession()
+          if (data?.session) {
+            // Update user type
+            await fetch('/api/user/update-type', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ userType }),
+            })
+            // Clear stored user type
+            localStorage.removeItem('userType')
+          }
+        } catch (error) {
+          console.error('Error updating user type:', error)
+        }
+      }
+    }
+
+    updateUserType()
+  }, [])
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10 bg-gradient-to-br from-pink-50 to-purple-50">
+    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10 bg-linear-to-br from-pink-50 to-purple-50">
       <div className="w-full max-w-sm">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2 text-center">

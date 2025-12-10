@@ -3,10 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import type { User } from "@supabase/supabase-js"
+import { authClient } from "@/lib/auth-client"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,27 +19,47 @@ import { Heart, LayoutGrid, ShoppingBag, UserIcon } from "lucide-react"
 export function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<{ id: string; email: string; name?: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient() // Use single supabase instance throughout the component
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
-      setLoading(false)
-    })
+    const fetchUser = async () => {
+      try {
+        const { data } = await authClient.getSession()
+        // Extract user data from the session
+        if (data?.session) {
+          // Fetch user profile from API
+          const response = await fetch('/api/user/profile')
+          if (response.ok) {
+            const userData = await response.json()
+            setUser(userData)
+          } else {
+            setUser(null)
+          }
+        } else {
+          setUser(null)
+        }
+      } catch (error) {
+        console.error('Error fetching user session:', error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
+    }
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    fetchUser()
 
-    return () => subscription.unsubscribe()
+    // We don't have a direct subscription method in Better Auth client
+    // So we'll poll for session changes periodically
+    const interval = setInterval(fetchUser, 60000) // Check every minute
+
+    return () => {
+      clearInterval(interval)
+    }
   }, [])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut() // Use the same client instance from the module
+    await authClient.signOut({})
     router.push("/")
   }
 
@@ -48,7 +67,7 @@ export function Navbar() {
     <nav className="border-b bg-white sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-linear-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">RC</span>
           </div>
           <span className="font-bold text-xl text-pink-600">RinaCards</span>

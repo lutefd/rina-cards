@@ -1,15 +1,16 @@
 import { Navbar } from "@/components/navbar"
-import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { NovaWishlistForm } from "@/components/nova-wishlist-form"
+import { auth } from "@/lib/auth"
+import { headers } from "next/headers"
 
 export default async function NovaWishlistPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Get session from Better Auth
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  })
 
-  if (!user) {
+  if (!session) {
     redirect("/auth/login")
   }
 
@@ -24,7 +25,7 @@ export default async function NovaWishlistPage() {
             <p className="text-muted-foreground">Crie uma nova lista de desejos para seus photocards</p>
           </div>
 
-          <NovaWishlistForm userId={user.id} />
+          <NovaWishlistForm />
         </div>
       </div>
     </div>

@@ -1,38 +1,47 @@
-import { Navbar } from "@/components/navbar"
-import { createClient } from "@/lib/supabase/server"
-import { redirect, notFound } from "next/navigation"
-import { EditarWishlistForm } from "@/components/editar-wishlist-form"
+import { Navbar } from "@/components/navbar";
+import { redirect, notFound } from "next/navigation";
+import { EditarWishlistForm } from "@/components/editar-wishlist-form";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { db } from "@/lib/db";
+import { wishlists } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
 
-export default async function EditarWishlistPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default async function EditarWishlistPage({
+	params,
+}: {
+	params: Promise<{ id: string }>;
+}) {
+	const { id } = await params;
 
-  if (!user) {
-    redirect("/auth/login")
-  }
+	// Get session from Better Auth
+	const session = await auth.api.getSession({
+		headers: await headers(),
+	});
 
-  const { data: wishlist, error } = await supabase
-    .from("wishlists")
-    .select("*")
-    .eq("id", id)
-    .eq("usuario_id", user.id)
-    .single()
+	if (!session) {
+		redirect("/auth/login");
+	}
 
-  if (error || !wishlist) {
-    notFound()
-  }
+	// Get wishlist data
+	const [wishlist] = await db
+		.select()
+		.from(wishlists)
+		.where(and(eq(wishlists.id, id), eq(wishlists.userId, session.user.id)))
+		.limit(1);
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
+	if (!wishlist) {
+		notFound();
+	}
 
-      <div className="container mx-auto px-4 py-8 max-w-2xl">
-        <h1 className="text-3xl font-bold mb-8">Editar Wishlist</h1>
-        <EditarWishlistForm wishlist={wishlist} />
-      </div>
-    </div>
-  )
+	return (
+		<div className="min-h-screen bg-gray-50">
+			<Navbar />
+
+			<div className="container mx-auto px-4 py-8 max-w-2xl">
+				<h1 className="text-3xl font-bold mb-8">Editar Wishlist</h1>
+				<EditarWishlistForm wishlist={wishlist} />
+			</div>
+		</div>
+	);
 }
