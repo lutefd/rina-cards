@@ -59,20 +59,19 @@ export async function PUT(request: NextRequest) {
 
 		// Parse request body
 		const body = await request.json();
-		const { name, userType } = body;
+		const { name } = body;
 
-		// Validate input
-		if (!name && !userType) {
+		// Validate input - userType changes are not allowed
+		if (!name) {
 			return NextResponse.json(
 				{ message: "No fields to update" },
 				{ status: 400 }
 			);
 		}
 
-		// Prepare update data
-		const updateData: { name?: string; userType?: string } = {};
+		// Prepare update data - only name can be updated
+		const updateData: { name?: string } = {};
 		if (name) updateData.name = name;
-		if (userType) updateData.userType = userType;
 
 		// Update user profile
 		await db.update(user).set(updateData).where(eq(user.id, session.user.id));
